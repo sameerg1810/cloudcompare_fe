@@ -122,7 +122,7 @@ const ALL_COLUMNS_CONFIG = [
     key: "location",
     sortable: true,
     tooltip: "Specific datacenter location within the region.",
-  }, // New
+  },
   {
     label: "VM Size",
     key: "vmSize",
@@ -140,14 +140,14 @@ const ALL_COLUMNS_CONFIG = [
     label: "Product Name",
     key: "productName",
     sortable: true,
-    tooltip: "The general product offering name.",
-  }, // New
+    tooltip: "Marketing name for the product.",
+  },
   {
     label: "SKU Name",
     key: "skuName",
     sortable: true,
-    tooltip: "The Stock Keeping Unit name for the specific offering.",
-  }, // New
+    tooltip: "Specific stock-keeping unit name.",
+  },
   {
     label: "Pricing Type",
     key: "priceType",
@@ -158,8 +158,8 @@ const ALL_COLUMNS_CONFIG = [
     label: "Price Category",
     key: "priceCategory",
     sortable: true,
-    tooltip: "The specific category used for pricing, if applicable.",
-  }, // New
+    tooltip: "Category used for pricing.",
+  },
   {
     label: "Price/Hour (USD)",
     key: "pricePerHour",
@@ -171,7 +171,7 @@ const ALL_COLUMNS_CONFIG = [
     key: "currency",
     sortable: true,
     tooltip: "The currency in which the price is listed.",
-  }, // New
+  },
   {
     label: "Effective Date",
     key: "effectiveDate",
@@ -183,7 +183,7 @@ const ALL_COLUMNS_CONFIG = [
     key: "unitOfMeasure",
     sortable: true,
     tooltip: "The unit by which the service is measured (e.g., 1 Hour).",
-  }, // New
+  },
   {
     label: "Spot Eligible",
     key: "spotEligible",
@@ -195,13 +195,13 @@ const ALL_COLUMNS_CONFIG = [
     key: "productId",
     sortable: true,
     tooltip: "Unique identifier for the product offering.",
-  }, // New
+  },
   {
     label: "Meter ID",
     key: "meterId",
     sortable: true,
-    tooltip: "Unique identifier for the specific meter of the service.",
-  }, // New
+    tooltip: "Unique identifier for the meter.",
+  },
 ];
 
 const Clouddata = () => {
@@ -232,7 +232,7 @@ const Clouddata = () => {
     ALL_FILTERS_CONFIG.map((f) => ({ ...f, isVisible: f.isVisible })),
   );
   const [visibleColumnsConfig, setVisibleColumnsConfig] = useState(
-    ALL_COLUMNS_CONFIG.map((c) => ({ ...c, isVisible: true })), // All columns are visible by default
+    ALL_COLUMNS_CONFIG.map((c) => ({ ...c, isVisible: true })), // All remaining columns are visible by default
   );
 
   const [showFilterCustomization, setShowFilterCustomization] = useState(false);
@@ -420,8 +420,6 @@ const Clouddata = () => {
       return false;
     }
 
-    // Current date is June 7, 2025. 30 days ago is May 8, 2025.
-    // "02-01-2025" (February 1, 2025) is NOT within the last 30 days.
     return recordDate > thirtyDaysAgo;
   };
 
@@ -442,14 +440,10 @@ const Clouddata = () => {
           <div className="text-4xl text-darkPurple-500 animate-pulse">
             <i className="fas fa-cloud"></i>
           </div>
-          <div className="flex flex-col">
-            <h1 className="font-scifi text-3xl text-darkPurple-800 tracking-wide text-shadow-glow">
-              Cloud Price Nexus
-            </h1>
-            <p className="text-xs text-darkPurple-600 font-secondary mt-1">
-              Real-time Insights from Cloud as a service
-            </p>
-          </div>
+          {/* Main title only, phrase removed */}
+          <h1 className="font-scifi text-3xl text-darkPurple-800 tracking-wide text-shadow-glow">
+            Cloud Price Nexus
+          </h1>
         </div>
 
         {/* Simplified Provider & Service Tabs */}
@@ -462,17 +456,8 @@ const Clouddata = () => {
           </button>
         </nav>
 
-        {/* Right-aligned items */}
+        {/* Right-aligned items (notification phrase removed) */}
         <div className="flex items-center space-x-6">
-          <p className="text-darkPurple-700 text-sm hidden lg:block animate-fade-in">
-            New data available!{" "}
-            <a
-              href="#"
-              className="underline text-darkPurple-500 hover:text-darkPurple-600 transition-colors"
-            >
-              See what's updated.
-            </a>
-          </p>
           <button
             title="Connect via Slack"
             className="text-darkPurple-800 hover:text-darkPurple-500 transition-colors transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-darkPurple-400 p-2 rounded-full"
@@ -493,10 +478,74 @@ const Clouddata = () => {
         className="p-6 bg-darkPurple-100 border-b border-darkPurple-300 shadow-md flex-shrink-0 z-10 sticky"
         style={{ top: headerHeight }}
       >
-        <h2 className="text-xl font-scifi text-darkPurple-800 mb-5 text-shadow-glow">
-          Filter Azure Virtual Machines
-        </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 mb-4">
+        {/* Buttons now on top of filter selections */}
+        <div className="flex flex-wrap gap-4 mb-6">
+          {" "}
+          {/* Added mb-6 for space below buttons */}
+          <button
+            onClick={fetchAzurePrices}
+            className="px-8 py-3 bg-darkPurple-500 text-white font-scifi rounded-lg hover:bg-darkPurple-600 transition-all duration-300 shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105 animate-pulse-once"
+            title="Apply all selected filters"
+          >
+            Apply Filters
+          </button>
+          <button
+            onClick={clearFilters}
+            className="px-8 py-3 bg-darkPurple-200 text-darkPurple-900 font-scifi rounded-lg hover:bg-darkPurple-300 transition-all duration-300 shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105"
+            title="Clear all filters"
+          >
+            Clear Filters
+          </button>
+          <button
+            className="px-8 py-3 bg-darkPurple-400 text-white font-scifi rounded-lg hover:bg-darkPurple-500 transition-all duration-300 shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105"
+            title="Export current data"
+          >
+            Export Data
+          </button>
+          {/* Customize Filter Button */}
+          <div className="relative">
+            <button
+              onClick={() =>
+                setShowFilterCustomization(!showFilterCustomization)
+              }
+              className="px-8 py-3 bg-darkPurple-300 text-darkPurple-900 font-scifi rounded-lg hover:bg-darkPurple-400 transition-all duration-300 shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105"
+              title="Customize visible filter fields"
+            >
+              <i className="fas fa-filter mr-2"></i> Customize Filters
+            </button>
+            {showFilterCustomization && (
+              <CustomTogglePanel
+                title="Visible Filters"
+                items={visibleFiltersConfig}
+                onToggle={toggleFilterVisibility}
+                onClose={() => setShowFilterCustomization(false)}
+              />
+            )}
+          </div>
+          {/* Columns Button */}
+          <div className="relative">
+            <button
+              onClick={() =>
+                setShowColumnCustomization(!showColumnCustomization)
+              }
+              className="px-8 py-3 bg-darkPurple-300 text-darkPurple-900 font-scifi rounded-lg hover:bg-darkPurple-400 transition-all duration-300 shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105"
+              title="Toggle table columns visibility"
+            >
+              <i className="fas fa-columns mr-2"></i> Columns
+            </button>
+            {showColumnCustomization && (
+              <CustomTogglePanel
+                title="Visible Columns"
+                items={visibleColumnsConfig}
+                onToggle={toggleColumnVisibility}
+                onClose={() => setShowColumnCustomization(false)}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* Filter selection folds */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
           {/* Dynamically render filters based on visibility */}
           {visibleFiltersConfig.map(
             (filterConfig) =>
@@ -552,71 +601,6 @@ const Clouddata = () => {
                 </div>
               ),
           )}
-        </div>
-
-        <div className="flex flex-wrap gap-4 mt-6">
-          <button
-            onClick={fetchAzurePrices}
-            className="px-8 py-3 bg-darkPurple-500 text-white font-scifi rounded-lg hover:bg-darkPurple-600 transition-all duration-300 shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105 animate-pulse-once"
-            title="Apply all selected filters"
-          >
-            Apply Filters
-          </button>
-          <button
-            onClick={clearFilters}
-            className="px-8 py-3 bg-darkPurple-200 text-darkPurple-900 font-scifi rounded-lg hover:bg-darkPurple-300 transition-all duration-300 shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105"
-            title="Clear all filters"
-          >
-            Clear Filters
-          </button>
-          <button
-            className="px-8 py-3 bg-darkPurple-400 text-white font-scifi rounded-lg hover:bg-darkPurple-500 transition-all duration-300 shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105"
-            title="Export current data"
-          >
-            Export Data
-          </button>
-
-          {/* Customize Filter Button */}
-          <div className="relative">
-            <button
-              onClick={() =>
-                setShowFilterCustomization(!showFilterCustomization)
-              }
-              className="px-8 py-3 bg-darkPurple-300 text-darkPurple-900 font-scifi rounded-lg hover:bg-darkPurple-400 transition-all duration-300 shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105"
-              title="Customize visible filter fields"
-            >
-              <i className="fas fa-filter mr-2"></i> Customize Filters
-            </button>
-            {showFilterCustomization && (
-              <CustomTogglePanel
-                title="Visible Filters"
-                items={visibleFiltersConfig}
-                onToggle={toggleFilterVisibility}
-                onClose={() => setShowFilterCustomization(false)}
-              />
-            )}
-          </div>
-
-          {/* Columns Button */}
-          <div className="relative">
-            <button
-              onClick={() =>
-                setShowColumnCustomization(!showColumnCustomization)
-              }
-              className="px-8 py-3 bg-darkPurple-300 text-darkPurple-900 font-scifi rounded-lg hover:bg-darkPurple-400 transition-all duration-300 shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105"
-              title="Toggle table columns visibility"
-            >
-              <i className="fas fa-columns mr-2"></i> Columns
-            </button>
-            {showColumnCustomization && (
-              <CustomTogglePanel
-                title="Visible Columns"
-                items={visibleColumnsConfig}
-                onToggle={toggleColumnVisibility}
-                onClose={() => setShowColumnCustomization(false)}
-              />
-            )}
-          </div>
         </div>
       </div>
 
@@ -721,7 +705,7 @@ const Clouddata = () => {
                               )}
                             </>
                           ) : (
-                            // Generic rendering for all other columns (location, meterName, productName, skuName, priceCategory, currency, unitOfMeasure, spotEligible, productId, meterId)
+                            // Generic rendering for all other columns based on their key in the item object
                             item[col.key] || "N/A"
                           )}
                         </td>
