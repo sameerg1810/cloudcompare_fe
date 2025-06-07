@@ -3,6 +3,7 @@ import { Routes, Route, Outlet } from "react-router-dom";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 import CloudData from "./Pages/Home";
+import AzureVmInfoPage from "./Pages/AzureVminfoPage";
 
 function Layout() {
   return (
@@ -21,6 +22,10 @@ const Routing = () => {
     <Routes>
       <Route element={<Layout />}>
         <Route path="/" element={<CloudData />} />
+        <Route
+          path="/azure-vm-info/:region/:vmSize"
+          element={<AzureVmInfoPage />}
+        />
       </Route>
     </Routes>
   );
