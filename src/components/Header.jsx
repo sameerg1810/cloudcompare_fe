@@ -38,11 +38,11 @@ const Header = () => {
           and the cloud icon linear reveal animation. */}
       <style>{`
         @keyframes glowing-cloud {
-          0% { filter: drop-shadow(0 0 8px #a78ad8); } /* darkPurple-300 */
-          25% { filter: drop-shadow(0 0 10px #c8b5e8); } /* darkPurple-200 */
-          50% { filter: drop-shadow(0 0 12px #e5dbf3); } /* darkPurple-100 */
-          75% { filter: drop-shadow(0 0 10px #c8b5e8); } /* darkPurple-200 */
-          100% { filter: drop-shadow(0 0 8px #a78ad8); } /* darkPurple-300 */
+          0% { filter: drop-shadow(0 0 6px #a78ad8); } /* darkPurple-300 */
+          25% { filter: drop-shadow(0 0 8px #c8b5e8); } /* darkPurple-200 */
+          50% { filter: drop-shadow(0 0 10px #e5dbf3); } /* darkPurple-100 */
+          75% { filter: drop-shadow(0 0 8px #c8b5e8); } /* darkPurple-200 */
+          100% { filter: drop-shadow(0 0 6px #a78ad8); } /* darkPurple-300 */
         }
         .cloud-glow {
           animation: glowing-cloud 3s infinite alternate; /* Apply the animation */
@@ -63,61 +63,55 @@ const Header = () => {
           100% { clip-path: inset(0 0 0 0); } /* Reveal completely */
         }
         .text-reveal-animation {
-          animation: horizontal-text-reveal 2s ease-out forwards; /* Apply the animation for 2 seconds */
+          animation: horizontal-text-reveal 1.5s ease-out forwards; /* Apply the animation for 1.5 seconds */
         }
       `}</style>
 
       <header
         ref={headerRef} // Attach ref to the header element
-        className="py-4 px-4 shadow-lg backdrop-blur-md relative overflow-hidden"
+        className="py-3 px-4 shadow-lg backdrop-blur-md relative overflow-hidden" // Reduced vertical padding
         style={{
           // Dynamic radial gradient background that follows the mouse cursor.
           // Using Facebook blue, a vibrant purple, and a light pink shade.
-          background: `radial-gradient(circle at ${gradientX}% ${gradientY}%, rgba(59, 89, 152, 0.8) 0%, rgba(107, 57, 183, 0.7) 70%, rgba(255, 192, 203, 0.6) 100%)`, // Facebook Blue, darkPurple-500, Light Pink (RGB: 255, 192, 203)
+          background: `radial-gradient(circle at ${gradientX}% ${gradientY}%, rgba(59, 89, 152, 0.7) 0%, rgba(107, 57, 183, 0.6) 70%, rgba(255, 192, 203, 0.5) 100%)`, // Slightly adjusted opacities
         }}
       >
         {/* Container for content, positioned above the dynamic background */}
-        <div className="container mx-auto flex flex-col items-center z-10 relative">
-          {/* Subheading with a subtle glow effect */}
-          <p
-            className="text-center text-white text-xs md:text-sm mb-3"
-            style={{ textShadow: "0 0 2px rgba(255,255,255,0.4)" }} // Decreased glow for subheading
-          >
-            Compare pricing across AWS, Azure, and GCP with ease
-          </p>
-
-          <div className="flex items-center justify-between w-full">
-            {/* Left section: Cloud Icon and Main Heading */}
-            <div className="flex items-center space-x-2">
-              {/* Cloud icon with linear reveal animation and continuous multi-color glow */}
-              <Cloud className="h-7 w-7 text-white md:h-8 md:w-8 cloud-reveal-animation cloud-glow" />
-              {/* Main heading with horizontal reveal animation and NO glow */}
-              <h1
-                className="text-xl md:text-2xl font-bold tracking-tight text-white text-reveal-animation"
-                // Removed textShadow style property
-              >
-                CloudAsaService
-              </h1>
-            </div>
-
-            {/* Right section: Login and Profile/Menu Icons */}
-            <div className="flex items-center space-x-4">
-              {/* Login Icon button with transparent darkPurple hover and lighter focus ring */}
-              <button
-                className="p-2 rounded-full hover:bg-darkPurple-700/50 focus:outline-none focus:ring-2 focus:ring-darkPurple-300 transition-all duration-200"
-                aria-label="Login"
-              >
-                <LogIn className="h-6 w-6 text-white md:h-7 md:w-7 drop-shadow-lg" />
-              </button>
-
-              {/* Profile/Menu Icon button with transparent darkPurple hover and lighter focus ring */}
-              <button
-                className="p-2 rounded-full hover:bg-darkPurple-700/50 focus:outline-none focus:ring-2 focus:ring-darkPurple-300 transition-all duration-200"
-                aria-label="User Profile"
-              >
-                <UserCircle className="h-6 w-6 text-white md:h-7 md:w-7 drop-shadow-lg" />
-              </button>
-            </div>
+        <div className="container mx-auto flex items-center justify-between z-10 relative">
+          {" "}
+          {/* Adjusted flex to justify content */}
+          {/* Left section: Cloud Icon and Main Heading */}
+          <div className="flex items-center space-x-2">
+            {/* Cloud icon with linear reveal animation and continuous multi-color glow */}
+            <Cloud className="h-6 w-6 text-white md:h-7 md:w-7 cloud-reveal-animation cloud-glow" />{" "}
+            {/* Slightly smaller icons */}
+            {/* Main heading with horizontal reveal animation and NO glow */}
+            <h1
+              className="text-lg md:text-xl font-bold tracking-tight text-white text-reveal-animation" // Slightly smaller text
+            >
+              CloudAsaService
+            </h1>
+          </div>
+          {/* Right section: Login and Profile/Menu Icons */}
+          <div className="flex items-center space-x-3">
+            {" "}
+            {/* Reduced horizontal space */}
+            {/* Login Icon button with transparent darkPurple hover and lighter focus ring */}
+            <button
+              className="p-1.5 rounded-full hover:bg-darkPurple-700/50 focus:outline-none focus:ring-2 focus:ring-darkPurple-300 transition-all duration-200" // Reduced padding
+              aria-label="Login"
+            >
+              <LogIn className="h-5 w-5 text-white md:h-6 md:w-6 drop-shadow-lg" />{" "}
+              {/* Slightly smaller icons */}
+            </button>
+            {/* Profile/Menu Icon button with transparent darkPurple hover and lighter focus ring */}
+            <button
+              className="p-1.5 rounded-full hover:bg-darkPurple-700/50 focus:outline-none focus:ring-2 focus:ring-darkPurple-300 transition-all duration-200" // Reduced padding
+              aria-label="User Profile"
+            >
+              <UserCircle className="h-5 w-5 text-white md:h-6 md:w-6 drop-shadow-lg" />{" "}
+              {/* Slightly smaller icons */}
+            </button>
           </div>
         </div>
       </header>

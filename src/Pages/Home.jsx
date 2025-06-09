@@ -1,349 +1,322 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
-import axios from "axios";
+import React, { useState, useEffect, useRef, useContext, useMemo } from "react";
 import { Link } from "react-router-dom";
-import CustomTogglePanel from "../components/CustomTogglePanel";
+import { Tab, Tabs, TabList, TabPanel } from "react-tabs";
+import "react-tabs/style/react-tabs.css";
+import { Check, RotateCw, Download, Scale } from "lucide-react";
+import CustomTogglePanel from "../components/CustomTogglePanel.jsx";
+import { AzureDataContext } from "../context/AzureDataContext.jsx";
+import ComparedModal from "./ComparedModal.jsx";
+import axios from "axios";
+import AzureTable from "./AzureTable";
+import AWSTable from "./AWSTable";
+import GCPTable from "./GCPTable";
+import { REGION_DISPLAY_NAMES } from "../utils/constants";
 
-// --- Data Mapping & Constants ---
-
-const REGION_DISPLAY_NAMES = {
-  indonesiacentral: "Indonesia Central",
-  uaenorth: "UAE North",
-  switzerlandnorth: "Switzerland North",
-  israelcentral: "Israel Central",
-  francecentral: "France Central",
-  chilecentral: "Chile Central",
-  germanywestcentral: "Germany West Central",
-  mexicocentral: "Mexico Central",
-  eastasia: "East Asia",
-  southeastasia: "Southeast Asia",
-  brazilsouth: "Brazil South",
-  uswest: "US West",
-  canadacentral: "Canada Central",
-  westus: "West US",
-  centralus: "Central US", // Default region
-  northeurope: "North Europe",
-  italynorth: "Italy North",
-  swedencentral: "Sweden Central",
-  westindia: "West India",
+const PROVIDER_CONFIG = {
+  azure: {
+    pricingTypes: ["Consumption", "Reservation", "DevTestConsumption"],
+    fetchData: (fetchAzureData, filters) => fetchAzureData(filters, "prices"),
+    initialColumns: [
+      {
+        label: "Region",
+        key: "regionName",
+        sortable: true,
+        tooltip: "Geographical region.",
+      },
+      {
+        label: "Location",
+        key: "location",
+        sortable: true,
+        tooltip: "Specific datacenter location.",
+      },
+      {
+        label: "Instance Type",
+        key: "vmSize",
+        sortable: true,
+        tooltip: "Specific model of the instance. Click to view details.",
+      },
+      {
+        label: "API Name",
+        key: "meterName",
+        sortable: true,
+        tooltip: "Backend identifier.",
+      },
+      {
+        label: "Product Name",
+        key: "productName",
+        sortable: true,
+        tooltip: "General product offering name.",
+      },
+      {
+        label: "SKU Name",
+        key: "skuName",
+        sortable: true,
+        tooltip: "Stock Keeping Unit name.",
+      },
+      {
+        label: "Pricing Type",
+        key: "priceType",
+        sortable: true,
+        tooltip: "How the instance is billed.",
+      },
+      {
+        label: "Price Category",
+        key: "priceCategory",
+        sortable: true,
+        tooltip: "Category for pricing.",
+      },
+      {
+        label: "Price/Hour (USD)",
+        key: "pricePerHour",
+        sortable: true,
+        tooltip: "Estimated cost per hour.",
+      },
+      {
+        label: "Currency",
+        key: "currency",
+        sortable: true,
+        tooltip: "Currency of the price.",
+      },
+      {
+        label: "Effective Date",
+        key: "effectiveDate",
+        sortable: true,
+        tooltip: "Date price became active.",
+      },
+      {
+        label: "Unit of Measure",
+        key: "unitOfMeasure",
+        sortable: true,
+        tooltip: "Unit of measurement (e.g., 1 Hour).",
+      },
+      {
+        label: "Spot Eligible",
+        key: "spotEligible",
+        sortable: true,
+        tooltip: "Can be a spot instance.",
+      },
+      {
+        label: "Product ID",
+        key: "productId",
+        sortable: true,
+        tooltip: "Unique identifier for product.",
+      },
+      {
+        label: "Meter ID",
+        key: "meterId",
+        sortable: true,
+        tooltip: "Unique identifier for meter.",
+      },
+    ],
+    services: ["pricing"],
+  },
+  aws: {
+    pricingTypes: [],
+    fetchData: () => Promise.resolve([]),
+    initialColumns: [],
+    services: ["ec2", "rds", "elasticache", "redis"],
+  },
+  gcp: {
+    pricingTypes: [],
+    fetchData: () => Promise.resolve([]),
+    initialColumns: [],
+    services: ["computeEngine"],
+  },
 };
 
-const AZURE_REGIONS = Object.keys(REGION_DISPLAY_NAMES);
-const AZURE_PRICING_TYPES = [
-  "Consumption",
-  "Reservation",
-  "DevTestConsumption",
-];
-
-// --- UPDATED CONFIGURATIONS FOR FILTERS AND COLUMNS ---
 const ALL_FILTERS_CONFIG = [
   {
     key: "region",
     label: "Region",
     type: "select",
-    options: AZURE_REGIONS,
+    options: [],
     default: "centralus",
     tooltip: "Where your VM is located.",
-    isVisible: true,
+    dynamicOptions: {
+      azure: Object.keys(REGION_DISPLAY_NAMES).map((r) => ({
+        value: r,
+        label: REGION_DISPLAY_NAMES[r] || r,
+      })),
+      aws: [{ value: "dummy", label: "Dummy Region" }],
+      gcp: [{ value: "dummy", label: "Dummy Region" }],
+    },
   },
   {
     key: "vmSizeSearch",
-    label: "VM Size (Search)",
+    label: "Instance Type (Search)",
     type: "text",
     default: "",
     tooltip: "e.g., Standard_D2a_v4",
-    isVisible: true,
   },
   {
     key: "priceType",
     label: "Pricing Type",
     type: "select",
-    options: AZURE_PRICING_TYPES,
+    options: [],
     default: "Consumption",
     tooltip: "How you pay for the VM.",
-    isVisible: true,
-  },
-
-  // These filters are hidden by default
-  {
-    key: "spot",
-    label: "Spot Eligible?",
-    type: "select",
-    options: [
-      { value: "true", label: "Yes" },
-      { value: "false", label: "No" },
-    ],
-    default: "",
-    tooltip: "Can this be a spot instance?",
-    isVisible: false,
-  },
-  {
-    key: "minPrice",
-    label: "Min Price/Hour (USD)",
-    type: "number",
-    default: "",
-    tooltip: "Minimum hourly price.",
-    isVisible: false,
-  },
-  {
-    key: "maxPrice",
-    label: "Max Price/Hour (USD)",
-    type: "number",
-    default: "",
-    tooltip: "Maximum hourly price.",
-    isVisible: false,
-  },
-  {
-    key: "effectiveAfter",
-    label: "Effective After",
-    type: "date",
-    default: "",
-    tooltip: "Prices valid from this date.",
-    isVisible: false,
-  },
-  {
-    key: "effectiveBefore",
-    label: "Effective Before",
-    type: "date",
-    default: "",
-    tooltip: "Prices valid up to this date.",
-    isVisible: false,
-  },
-];
-
-const ALL_COLUMNS_CONFIG = [
-  {
-    label: "Region",
-    key: "regionName",
-    sortable: true,
-    tooltip: "Geographical region of the VM.",
-  },
-  {
-    label: "Location",
-    key: "location",
-    sortable: true,
-    tooltip: "Specific datacenter location within the region.",
-  },
-  {
-    label: "VM Size",
-    key: "vmSize",
-    sortable: true,
-    tooltip:
-      "Specific model and configuration of the VM. Click to view details.",
-  },
-  {
-    label: "API Name",
-    key: "meterName",
-    sortable: true,
-    tooltip: "Backend identifier for the service meter.",
-  },
-  {
-    label: "Product Name",
-    key: "productName",
-    sortable: true,
-    tooltip: "Marketing name for the product.",
-  },
-  {
-    label: "SKU Name",
-    key: "skuName",
-    sortable: true,
-    tooltip: "Specific stock-keeping unit name.",
-  },
-  {
-    label: "Pricing Type",
-    key: "priceType",
-    sortable: true,
-    tooltip: "How the VM is billed (e.g., Consumption, Reservation).",
-  },
-  {
-    label: "Price Category",
-    key: "priceCategory",
-    sortable: true,
-    tooltip: "Category used for pricing.",
-  },
-  {
-    label: "Price/Hour (USD)",
-    key: "pricePerHour",
-    sortable: true,
-    tooltip: "Estimated cost per hour in USD.",
-  },
-  {
-    label: "Currency",
-    key: "currency",
-    sortable: true,
-    tooltip: "The currency in which the price is listed.",
-  },
-  {
-    label: "Effective Date",
-    key: "effectiveDate",
-    sortable: true,
-    tooltip: "Date from which this price became active.",
-  },
-  {
-    label: "Unit of Measure",
-    key: "unitOfMeasure",
-    sortable: true,
-    tooltip: "The unit by which the service is measured (e.g., 1 Hour).",
-  },
-  {
-    label: "Spot Eligible",
-    key: "spotEligible",
-    sortable: true,
-    tooltip: "Indicates if this VM type can be a spot instance.",
-  },
-  {
-    label: "Product ID",
-    key: "productId",
-    sortable: true,
-    tooltip: "Unique identifier for the product offering.",
-  },
-  {
-    label: "Meter ID",
-    key: "meterId",
-    sortable: true,
-    tooltip: "Unique identifier for the meter.",
+    dynamicOptions: {
+      azure: PROVIDER_CONFIG.azure.pricingTypes.map((p) => ({
+        value: p,
+        label: p,
+      })),
+      aws: [{ value: "dummy", label: "Dummy Pricing" }],
+      gcp: [{ value: "dummy", label: "Dummy Pricing" }],
+    },
   },
 ];
 
 const Clouddata = () => {
-  const [vmData, setVmData] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const { data, loading, error, fetchAzureData } = useContext(AzureDataContext);
   const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 10,
-    totalCount: 0,
+    azure: { pricing: { page: 1, limit: 10, totalCount: 0 } },
+    aws: {
+      ec2: { page: 1, limit: 10, totalCount: 0 },
+      rds: { page: 1, limit: 10, totalCount: 0 },
+      elasticache: { page: 1, limit: 10, totalCount: 0 },
+      redis: { page: 1, limit: 10, totalCount: 0 },
+    },
+    gcp: { computeEngine: { page: 1, limit: 10, totalCount: 0 } },
   });
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
-
-  // Helper to get initial default filters (from ALL_FILTERS_CONFIG)
-  const getInitialFiltersState = useCallback(() => {
-    const initial = {};
-    ALL_FILTERS_CONFIG.forEach((filter) => {
-      initial[filter.key] = filter.default;
-    });
-    return initial;
-  }, []); // Empty dependency array means this function is created once
-
-  const [filters, setFilters] = useState(getInitialFiltersState());
-
-  // State for filter and column visibility
-  // Initialize with the isVisible property from ALL_FILTERS_CONFIG/ALL_COLUMNS_CONFIG
-  const [visibleFiltersConfig, setVisibleFiltersConfig] = useState(
-    ALL_FILTERS_CONFIG.map((f) => ({ ...f, isVisible: f.isVisible })),
-  );
+  const [selectedMainTabIndex, setSelectedMainTabIndex] = useState(0);
+  const [selectedSubTabIndex, setSelectedSubTabIndex] = useState({
+    azure: 0,
+    aws: 0,
+    gcp: 0,
+  });
+  const [filters, setFilters] = useState({
+    region: "centralus",
+    vmSizeSearch: "",
+    priceType: "Consumption",
+  });
+  const [debouncedFilters, setDebouncedFilters] = useState(filters);
   const [visibleColumnsConfig, setVisibleColumnsConfig] = useState(
-    ALL_COLUMNS_CONFIG.map((c) => ({ ...c, isVisible: true })), // All remaining columns are visible by default
+    PROVIDER_CONFIG.azure.initialColumns.map((c) => ({
+      ...c,
+      isVisible: true,
+    })),
   );
-
-  const [showFilterCustomization, setShowFilterCustomization] = useState(false);
   const [showColumnCustomization, setShowColumnCustomization] = useState(false);
+  const [currentProviderName, setCurrentProviderName] = useState("azure");
+  const [currentServiceKey, setCurrentServiceKey] = useState("pricing");
+  const [compareMode, setCompareMode] = useState(false);
+  const [selectedVms, setSelectedVms] = useState([]);
+  const [comparisonData, setComparisonData] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const [aiComparisonResult, setAIComparisonResult] = useState(null);
 
-  // Ref to measure header height for sticky positioning
   const headerRef = useRef(null);
   const [headerHeight, setHeaderHeight] = useState(0);
 
   useEffect(() => {
-    if (headerRef.current) {
-      setHeaderHeight(headerRef.current.offsetHeight);
-    }
-  }, []); // Calculate on mount
+    if (headerRef.current) setHeaderHeight(headerRef.current.offsetHeight);
+  }, []);
 
-  const fetchAzurePrices = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const params = {
-        ...(filters.region && { region: filters.region }),
-        ...(filters.vmSizeSearch && { vmSize: filters.vmSizeSearch }),
-        ...(filters.priceType && { priceType: filters.priceType }),
-        ...(filters.spot !== "" && { spot: filters.spot === "true" }),
-        ...(filters.minPrice && { minPrice: parseFloat(filters.minPrice) }),
-        ...(filters.maxPrice && { maxPrice: parseFloat(filters.maxPrice) }),
-        ...(filters.effectiveAfter && {
-          effectiveAfter: filters.effectiveAfter,
-        }),
-        ...(filters.effectiveBefore && {
-          effectiveBefore: filters.effectiveBefore,
-        }),
-      };
-
-      console.log("Fetching Azure VM prices with params:", params);
-      const response = await axios.get(
-        "http://localhost:3000/api/azureretailjune/prices",
-        {
-          params,
-        },
-      );
-      console.log("Azure API Response:", response.data);
-
-      const fetchedItems = response.data.data || [];
-
-      setVmData(fetchedItems);
-      setPagination((prev) => ({
-        ...prev,
-        page: 1, // Reset to page 1 on new data fetch
-        totalCount: fetchedItems.length, // Total count based on filtered data from backend
-      }));
-    } catch (err) {
-      console.error(
-        "Error fetching Azure VM data:",
-        err.response?.data || err.message,
-      );
-      setError(
-        "Failed to fetch Azure VM data. Please try again. " +
-          (err.response?.data?.message || err.message),
-      );
-      setVmData([]);
-      setPagination((prev) => ({ ...prev, page: 1, totalCount: 0 }));
-    } finally {
-      setLoading(false);
-    }
+  // Debounce filters
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedFilters(filters), 500);
+    return () => clearTimeout(handler);
   }, [filters]);
 
+  // Update provider and service based on tab selection
   useEffect(() => {
-    fetchAzurePrices();
-  }, [fetchAzurePrices]);
+    const provider = ["azure", "aws", "gcp"][selectedMainTabIndex];
+    const serviceMaps = PROVIDER_CONFIG[provider].services;
+    const service = serviceMaps[selectedSubTabIndex[provider]];
+    setCurrentProviderName(provider);
+    setCurrentServiceKey(service);
+    setVisibleColumnsConfig(
+      PROVIDER_CONFIG[provider].initialColumns.map((c) => ({
+        ...c,
+        isVisible: true,
+      })),
+    );
+  }, [selectedMainTabIndex, selectedSubTabIndex]);
 
-  const handleFilterChange = (field, value) => {
+  // Fetch data and dynamically update columns
+  useEffect(() => {
+    PROVIDER_CONFIG[currentProviderName]
+      .fetchData(fetchAzureData, debouncedFilters)
+      .then((items) => {
+        console.log(
+          `Fetched items for ${currentProviderName}/${currentServiceKey}:`,
+          items,
+        );
+        if (items.length > 0) {
+          const sampleItem = items[0];
+          const availableKeys = Object.keys(sampleItem).filter((key) =>
+            PROVIDER_CONFIG[currentProviderName].initialColumns.some(
+              (col) => col.key === key,
+            ),
+          );
+          const updatedColumns = PROVIDER_CONFIG[
+            currentProviderName
+          ].initialColumns
+            .filter((col) => availableKeys.includes(col.key))
+            .map((col) => ({ ...col, isVisible: true }));
+          setVisibleColumnsConfig(updatedColumns);
+        }
+        setPagination((prev) => ({
+          ...prev,
+          [currentProviderName]: {
+            ...prev[currentProviderName],
+            [currentServiceKey]: {
+              ...prev[currentProviderName][currentServiceKey],
+              page: 1,
+              totalCount: items.length,
+            },
+          },
+        }));
+      });
+  }, [
+    fetchAzureData,
+    debouncedFilters,
+    currentProviderName,
+    currentServiceKey,
+  ]);
+
+  const handleFilterChange = (field, value) =>
     setFilters((prev) => ({ ...prev, [field]: value }));
-  };
 
   const clearFilters = () => {
-    setFilters(getInitialFiltersState()); // Reset to initial defaults
-    setSortConfig({ key: null, direction: "asc" }); // Reset sorting
-    // Also reset visible filters/columns to their initial visible state as defined in config
-    setVisibleFiltersConfig(
-      ALL_FILTERS_CONFIG.map((f) => ({ ...f, isVisible: f.isVisible })),
-    );
+    setFilters({
+      region: "centralus",
+      vmSizeSearch: "",
+      priceType: "Consumption",
+    });
+    setSortConfig({ key: null, direction: "asc" });
     setVisibleColumnsConfig(
-      ALL_COLUMNS_CONFIG.map((c) => ({ ...c, isVisible: true })),
-    ); // All remaining columns visible
+      PROVIDER_CONFIG[currentProviderName].initialColumns.map((c) => ({
+        ...c,
+        isVisible: true,
+      })),
+    );
+    setSelectedVms([]);
+    setCompareMode(false);
+    setAIComparisonResult(null);
   };
 
-  const handlePageChange = (newPage) => {
-    setPagination((prev) => ({ ...prev, page: newPage }));
-  };
+  const handlePageChange = (newPage) =>
+    setPagination((prev) => ({
+      ...prev,
+      [currentProviderName]: {
+        ...prev[currentProviderName],
+        [currentServiceKey]: {
+          ...prev[currentProviderName][currentServiceKey],
+          page: newPage,
+        },
+      },
+    }));
 
   const handleSort = (key) => {
     let direction = "asc";
-    if (sortConfig.key === key && sortConfig.direction === "asc") {
+    if (sortConfig.key === key && sortConfig.direction === "asc")
       direction = "desc";
-    }
     setSortConfig({ key, direction });
   };
 
-  const toggleFilterVisibility = (filterKey) => {
-    setVisibleFiltersConfig((prev) =>
-      prev.map((filter) =>
-        filter.key === filterKey
-          ? { ...filter, isVisible: !filter.isVisible }
-          : filter,
-      ),
-    );
-  };
-
-  const toggleColumnVisibility = (columnLabel) => {
+  const toggleColumnVisibility = (columnLabel) =>
     setVisibleColumnsConfig((prev) =>
       prev.map((column) =>
         column.label === columnLabel
@@ -351,401 +324,422 @@ const Clouddata = () => {
           : column,
       ),
     );
-  };
 
-  const getClientFilteredAndSortedData = () => {
-    let currentData = [...vmData];
+  const getClientFilteredAndSortedData = useMemo(() => {
+    const currentData = data[currentProviderName]?.[currentServiceKey] || [];
+    console.log(
+      `Current data for ${currentProviderName}/${currentServiceKey}:`,
+      currentData,
+    );
+    let filteredData = [...currentData];
 
-    // Apply sorting
-    if (sortConfig.key) {
-      currentData.sort((a, b) => {
-        const aValue = a[sortConfig.key];
-        const bValue = b[sortConfig.key];
-
-        if (aValue === undefined || aValue === null) return 1;
-        if (bValue === undefined || bValue === null) return -1;
-
-        if (typeof aValue === "string" && typeof bValue === "string") {
-          return sortConfig.direction === "asc"
-            ? aValue.localeCompare(bValue)
-            : bValue.localeCompare(aValue);
-        }
-        if (aValue < bValue) {
-          return sortConfig.direction === "asc" ? -1 : 1;
-        }
-        if (aValue > bValue) {
-          return sortConfig.direction === "asc" ? 1 : -1;
-        }
-        return 0;
-      });
+    // Apply filters
+    if (filters.region) {
+      filteredData = filteredData.filter(
+        (item) => item.regionName === filters.region,
+      );
     }
-    return currentData;
-  };
+    if (filters.vmSizeSearch) {
+      const searchTerm = filters.vmSizeSearch.toLowerCase();
+      filteredData = filteredData.filter((item) =>
+        item.vmSize?.toLowerCase().includes(searchTerm),
+      );
+    }
+    if (filters.priceType) {
+      filteredData = filteredData.filter(
+        (item) => item.priceType === filters.priceType,
+      );
+    }
 
-  const clientFilteredAndSortedData = getClientFilteredAndSortedData();
-  useEffect(() => {
-    setPagination((prev) => ({
-      ...prev,
-      totalCount: clientFilteredAndSortedData.length,
-    }));
-  }, [clientFilteredAndSortedData.length]);
+    if (!sortConfig.key) return filteredData;
+    return filteredData.sort((a, b) => {
+      const aValue = a[sortConfig.key];
+      const bValue = b[sortConfig.key];
+      if (aValue === undefined || aValue === null) return 1;
+      if (bValue === undefined || bValue === null) return -1;
+      if (typeof aValue === "string" && typeof bValue === "string")
+        return sortConfig.direction === "asc"
+          ? aValue.localeCompare(bValue)
+          : bValue.localeCompare(aValue);
+      return sortConfig.direction === "asc"
+        ? aValue < bValue
+          ? -1
+          : aValue > bValue
+          ? 1
+          : 0
+        : aValue > bValue
+        ? -1
+        : aValue < bValue
+        ? 1
+        : 0;
+    });
+  }, [data, currentProviderName, currentServiceKey, filters, sortConfig]);
 
-  const totalPages = Math.ceil(pagination.totalCount / pagination.limit);
-  const startIndex = (pagination.page - 1) * pagination.limit;
-  const endIndex = startIndex + pagination.limit;
-  const displayedData = clientFilteredAndSortedData.slice(startIndex, endIndex);
-
-  // Helper to determine if a record is "new" (effectiveDate within last 30 days)
   const isNewRecord = (effectiveDate) => {
     if (!effectiveDate) return false;
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
     let recordDate;
     try {
       recordDate = new Date(effectiveDate);
       if (isNaN(recordDate.getTime()) && effectiveDate.includes("-")) {
-        const [datePart, timePart] = effectiveDate.split(" ");
-        const [month, day, year] = datePart.split("-");
-        recordDate = new Date(
-          `${year}-${month}-${day}T${timePart || "00:00:00"}Z`,
-        );
+        const [month, day, year, time] = effectiveDate.split(/[- :]/);
+        recordDate = new Date(`${year}-${month}-${day}T${time || "00:00:00"}Z`);
       }
-      if (isNaN(recordDate.getTime())) {
-        console.warn("Could not parse effectiveDate:", effectiveDate);
-        return false;
-      }
+      if (isNaN(recordDate.getTime())) return false;
     } catch (e) {
-      console.warn("Error parsing effectiveDate:", effectiveDate, e);
       return false;
     }
-
     return recordDate > thirtyDaysAgo;
   };
 
-  // Filter out non-visible columns for dynamic rendering
-  const currentVisibleColumns = ALL_COLUMNS_CONFIG.filter(
-    (col) => visibleColumnsConfig.find((vc) => vc.key === col.key)?.isVisible,
+  const currentLoadingState = loading[currentProviderName]?.[currentServiceKey];
+  const currentErrorState =
+    currentProviderName === "azure"
+      ? error[currentProviderName]?.[currentServiceKey]
+      : currentProviderName === "aws"
+      ? "No AWS API available"
+      : "No GCP API available";
+  const currentPaginationData = pagination[currentProviderName]?.[
+    currentServiceKey
+  ] || { page: 1, limit: 10, totalCount: 0 };
+  const displayedData = getClientFilteredAndSortedData.slice(
+    (currentPaginationData.page - 1) * currentPaginationData.limit,
+    currentPaginationData.page * currentPaginationData.limit,
+  );
+  const totalPages = Math.ceil(
+    currentPaginationData.totalCount / currentPaginationData.limit,
+  );
+  const currentVisibleColumns = visibleColumnsConfig.filter(
+    (col) => col.isVisible,
   );
 
+  const handleRowSelection = (item) => {
+    if (!compareMode) return;
+    const itemKey = `${item.regionName || ""}-${item.vmSize || ""}-${
+      item.priceType || ""
+    }-${item.effectiveDate || ""}`;
+    setSelectedVms((prev) => {
+      const isSelected = prev.some((v) => v.itemKey === itemKey);
+      if (isSelected) {
+        return prev.filter((v) => v.itemKey !== itemKey);
+      } else {
+        return [...prev, { itemKey, ...item, provider: currentProviderName }];
+      }
+    });
+  };
+
+  const handleCompare = () => {
+    setCompareMode((prev) => !prev); // Toggle compare mode
+  };
+
+  const handleGoCompare = async () => {
+    console.log("Selected VMs for comparison:", selectedVms);
+    if (selectedVms.length < 2) {
+      alert("Please select at least two VMs to compare.");
+      return;
+    }
+    try {
+      const vmsForComparison = selectedVms.map((vm) => ({
+        region: vm.regionName,
+        name: vm.vmSize,
+      }));
+      console.log("Sending comparison request with:", {
+        vms: vmsForComparison,
+      });
+      const response = await axios.post(
+        "http://localhost:3000/api/azurevminfojune/compare",
+        { vms: vmsForComparison },
+      );
+      setComparisonData(response.data);
+      setShowModal(true);
+    } catch (error) {
+      console.error(
+        "Error comparing VMs:",
+        error.response?.data || error.message,
+      );
+      alert("Failed to compare VMs. Check console for details.");
+    }
+  };
+
+  const renderTable = () => {
+    switch (currentProviderName) {
+      case "azure":
+        return (
+          <AzureTable
+            data={displayedData}
+            loading={currentLoadingState}
+            error={currentErrorState}
+            visibleColumns={currentVisibleColumns}
+            compareMode={compareMode}
+            onRowSelection={handleRowSelection}
+            sortConfig={sortConfig}
+            selectedVms={selectedVms}
+          />
+        );
+      case "aws":
+        return (
+          <AWSTable
+            data={[]}
+            loading={currentLoadingState}
+            error={currentErrorState}
+            visibleColumns={[]}
+            compareMode={compareMode}
+            onRowSelection={() => {}}
+            sortConfig={sortConfig}
+          />
+        );
+      case "gcp":
+        return (
+          <GCPTable
+            data={[]}
+            loading={currentLoadingState}
+            error={currentErrorState}
+            visibleColumns={[]}
+            compareMode={compareMode}
+            onRowSelection={() => {}}
+            sortConfig={sortConfig}
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-darkPurple-50 to-darkPurple-100 text-darkPurple-900 font-secondary flex flex-col">
-      {/* Top Header/Navigation Bar */}
+    <div className="min-h-screen bg-gradient-to-br from-darkPurple-50 to-darkPurple-100 text-darkPurple-900 font-secondary flex flex-col p-0 m-0">
       <header
         ref={headerRef}
-        className="bg-darkPurple-50 p-4 border-b border-darkPurple-300 shadow-lg flex justify-between items-center z-20 sticky top-0 backdrop-blur-sm bg-opacity-90"
+        className="bg-darkPurple-50 px-3 py-2 border-b border-darkPurple-300 shadow-lg flex flex-col sm:flex-row justify-between items-center sticky top-0 backdrop-blur-sm bg-opacity-90"
       >
-        <div className="flex items-center space-x-4">
-          {/* Logo Placeholder */}
-          <div className="text-4xl text-darkPurple-500 animate-pulse">
+        <div className="flex items-start w-full sm:w-auto">
+          <div className="text-3xl text-darkPurple-500 animate-pulse flex-shrink-0 mt-1">
             <i className="fas fa-cloud"></i>
           </div>
-          {/* Main title only, phrase removed */}
-          <h1 className="font-scifi text-3xl text-darkPurple-800 tracking-wide text-shadow-glow">
-            Cloud Price Nexus
-          </h1>
+          <div className="flex flex-col ml-2">
+            <nav className="flex-shrink-0">
+              <Tabs
+                selectedIndex={selectedMainTabIndex}
+                onSelect={(index) => setSelectedMainTabIndex(index)}
+              >
+                <TabList className="flex space-x-1 p-0.5 text-sm rounded-none border-0 bg-transparent">
+                  {Object.keys(PROVIDER_CONFIG).map((provider, index) => (
+                    <Tab
+                      key={provider}
+                      className={`inline-block px-3 py-1.5 font-scifi rounded-t-lg transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-darkPurple-400
+                        ${
+                          selectedMainTabIndex === index
+                            ? "bg-darkPurple-500 text-white shadow-inner"
+                            : "bg-darkPurple-200 text-darkPurple-900 hover:bg-darkPurple-300"
+                        }`}
+                    >
+                      {provider.toUpperCase()}
+                    </Tab>
+                  ))}
+                </TabList>
+                {Object.keys(PROVIDER_CONFIG).map((provider, index) => (
+                  <TabPanel key={provider}>
+                    <nav className="flex-shrink-0 mt-0">
+                      <div className="flex space-x-1 p-0.5 text-xs rounded-none border-0 bg-transparent">
+                        {PROVIDER_CONFIG[provider].services.map(
+                          (service, idx) => (
+                            <button
+                              key={service}
+                              onClick={() =>
+                                setSelectedSubTabIndex((prev) => ({
+                                  ...prev,
+                                  [provider]: idx,
+                                }))
+                              }
+                              className={`inline-block px-2 py-1 font-scifi rounded-b-lg transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-darkPurple-400
+                                ${
+                                  selectedSubTabIndex[provider] === idx
+                                    ? "bg-darkPurple-500 text-white shadow-inner"
+                                    : "bg-darkPurple-200 text-darkPurple-900 hover:bg-darkPurple-300"
+                                }`}
+                            >
+                              {provider === "azure"
+                                ? "VM"
+                                : service.toUpperCase()}{" "}
+                              {/* Show "VM" for Azure, otherwise use service name */}
+                            </button>
+                          ),
+                        )}
+                      </div>
+                    </nav>
+                  </TabPanel>
+                ))}
+              </Tabs>
+            </nav>
+          </div>
         </div>
-
-        {/* Simplified Provider & Service Tabs */}
-        <nav className="flex space-x-2 border-2 border-darkPurple-300 rounded-lg p-1 bg-darkPurple-100 shadow-inner transition-colors duration-300">
-          <button className="px-4 py-2 font-scifi text-white bg-darkPurple-500 rounded-lg shadow-inner transition-all duration-300 hover:scale-105 hover:bg-darkPurple-600 focus:outline-none focus:ring-2 focus:ring-darkPurple-400">
-            Azure
+        <div className="flex items-center space-x-3 flex-shrink-0 ml-auto mt-2 sm:mt-0">
+          <button
+            title="Export Data"
+            className="text-darkPurple-800 hover:text-darkPurple-500 transition-colors transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-darkPurple-400 p-1.5 rounded-full"
+          >
+            <Download className="h-5 w-5" />
           </button>
-          <button className="px-4 py-2 font-scifi text-darkPurple-900 bg-darkPurple-200 rounded-lg shadow-inner transition-all duration-300 hover:scale-105 hover:bg-darkPurple-300 focus:outline-none focus:ring-2 focus:ring-darkPurple-400">
-            VM
+          <button
+            title="Toggle Compare Mode"
+            onClick={handleCompare}
+            className={`text-darkPurple-800 hover:text-darkPurple-500 transition-colors transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-darkPurple-400 p-1.5 rounded-full ${
+              compareMode ? "border-green-500" : "border-red-500"
+            }`}
+          >
+            <Scale className="h-5 w-5 inline mr-1" /> Compare
           </button>
-        </nav>
-
-        {/* Right-aligned items (notification phrase removed) */}
-        <div className="flex items-center space-x-6">
+          {compareMode && selectedVms.length >= 2 && (
+            <button
+              title="Let's Compare"
+              onClick={handleGoCompare}
+              className="px-3 py-1.5 bg-green-500 text-white font-scifi rounded-lg hover:bg-green-600 transition-all duration-300 shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105 text-sm"
+            >
+              Let's Compare
+            </button>
+          )}
           <button
             title="Connect via Slack"
-            className="text-darkPurple-800 hover:text-darkPurple-500 transition-colors transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-darkPurple-400 p-2 rounded-full"
+            className="text-darkPurple-800 hover:text-darkPurple-500 transition-colors transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-darkPurple-400 p-1.5 rounded-full"
           >
             <i className="fab fa-slack fa-lg"></i>
           </button>
           <button
             title="Star our project"
-            className="text-darkPurple-800 hover:text-darkPurple-500 transition-colors transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-darkPurple-400 p-2 rounded-full"
+            className="text-darkPurple-800 hover:text-darkPurple-500 transition-colors transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-darkPurple-400 p-1.5 rounded-full"
           >
             <i className="fas fa-star fa-lg"></i>
           </button>
         </div>
       </header>
 
-      {/* Filter Bar (Sticky) */}
-      <div
-        className="p-6 bg-darkPurple-100 border-b border-darkPurple-300 shadow-md flex-shrink-0 z-10 sticky"
-        style={{ top: headerHeight }}
-      >
-        {/* Buttons now on top of filter selections */}
-        <div className="flex flex-wrap gap-4 mb-6">
-          {" "}
-          {/* Added mb-6 for space below buttons */}
+      {compareMode && (
+        <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-2 mb-4 mx-3 rounded flex items-center justify-between">
+          <p className="text-sm">You are in compare mode now.</p>
           <button
-            onClick={fetchAzurePrices}
-            className="px-8 py-3 bg-darkPurple-500 text-white font-scifi rounded-lg hover:bg-darkPurple-600 transition-all duration-300 shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105 animate-pulse-once"
-            title="Apply all selected filters"
+            onClick={handleCompare}
+            className="text-green-700 hover:text-green-900 ml-4 text-sm font-semibold"
           >
-            Apply Filters
+            Disable
           </button>
-          <button
-            onClick={clearFilters}
-            className="px-8 py-3 bg-darkPurple-200 text-darkPurple-900 font-scifi rounded-lg hover:bg-darkPurple-300 transition-all duration-300 shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105"
-            title="Clear all filters"
-          >
-            Clear Filters
-          </button>
-          <button
-            className="px-8 py-3 bg-darkPurple-400 text-white font-scifi rounded-lg hover:bg-darkPurple-500 transition-all duration-300 shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105"
-            title="Export current data"
-          >
-            Export Data
-          </button>
-          {/* Customize Filter Button */}
-          <div className="relative">
-            <button
-              onClick={() =>
-                setShowFilterCustomization(!showFilterCustomization)
-              }
-              className="px-8 py-3 bg-darkPurple-300 text-darkPurple-900 font-scifi rounded-lg hover:bg-darkPurple-400 transition-all duration-300 shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105"
-              title="Customize visible filter fields"
-            >
-              <i className="fas fa-filter mr-2"></i> Customize Filters
-            </button>
-            {showFilterCustomization && (
-              <CustomTogglePanel
-                title="Visible Filters"
-                items={visibleFiltersConfig}
-                onToggle={toggleFilterVisibility}
-                onClose={() => setShowFilterCustomization(false)}
-              />
-            )}
-          </div>
-          {/* Columns Button */}
-          <div className="relative">
-            <button
-              onClick={() =>
-                setShowColumnCustomization(!showColumnCustomization)
-              }
-              className="px-8 py-3 bg-darkPurple-300 text-darkPurple-900 font-scifi rounded-lg hover:bg-darkPurple-400 transition-all duration-300 shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105"
-              title="Toggle table columns visibility"
-            >
-              <i className="fas fa-columns mr-2"></i> Columns
-            </button>
-            {showColumnCustomization && (
-              <CustomTogglePanel
-                title="Visible Columns"
-                items={visibleColumnsConfig}
-                onToggle={toggleColumnVisibility}
-                onClose={() => setShowColumnCustomization(false)}
-              />
-            )}
-          </div>
         </div>
+      )}
 
-        {/* Filter selection folds */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-          {/* Dynamically render filters based on visibility */}
-          {visibleFiltersConfig.map(
-            (filterConfig) =>
-              filterConfig.isVisible && (
-                <div key={filterConfig.key}>
-                  <label className="block text-darkPurple-900 text-sm font-bold mb-2">
-                    {filterConfig.label}
-                    <p className="text-xs text-darkPurple-700 font-normal mt-0.5">
-                      {filterConfig.tooltip}
-                    </p>
-                  </label>
-                  {filterConfig.type === "select" ? (
-                    <select
-                      value={filters[filterConfig.key]}
-                      onChange={(e) =>
-                        handleFilterChange(filterConfig.key, e.target.value)
-                      }
-                      className="w-full p-2.5 rounded-lg bg-darkPurple-50 text-darkPurple-900 border border-darkPurple-300 focus:outline-none focus:ring-2 focus:ring-darkPurple-500 transition-all duration-200 custom-select"
-                      title={filterConfig.tooltip}
-                    >
-                      <option value="">
-                        {filterConfig.label.includes("?")
-                          ? "Any"
-                          : `All ${filterConfig.label.split("(")[0].trim()}s`}
+      <div
+        className="p-4 bg-darkPurple-100 border-b border-darkPurple-300 shadow-md flex-shrink-0 sticky"
+        style={{ top: headerHeight + (compareMode ? 40 : 0) }}
+      >
+        <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 flex-grow">
+            {ALL_FILTERS_CONFIG.map((filterConfig) => (
+              <div key={filterConfig.key}>
+                <label className="block text-darkPurple-900 text-xs font-bold mb-1">
+                  {filterConfig.label}
+                  <p className="text-xxs text-darkPurple-700 font-normal mt-0.5 hidden sm:block">
+                    {filterConfig.tooltip}
+                  </p>
+                </label>
+                {filterConfig.type === "select" ? (
+                  <select
+                    value={filters[filterConfig.key]}
+                    onChange={(e) =>
+                      handleFilterChange(filterConfig.key, e.target.value)
+                    }
+                    className="w-full p-1.5 rounded-lg bg-darkPurple-50 text-darkPurple-900 border border-darkPurple-300 focus:outline-none focus:ring-2 focus:ring-darkPurple-500 transition-all duration-200 custom-select text-sm"
+                    title={filterConfig.tooltip}
+                    disabled={currentProviderName !== "azure" || compareMode}
+                  >
+                    <option value="">
+                      {filterConfig.label.includes("?")
+                        ? "Any"
+                        : `All ${filterConfig.label.split("(")[0].trim()}s`}
+                    </option>
+                    {(
+                      filterConfig.dynamicOptions?.[currentProviderName] || []
+                    ).map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
                       </option>
-                      {filterConfig.options.map((option) => (
-                        <option
-                          key={option.value || option}
-                          value={option.value || option}
-                        >
-                          {option.label ||
-                            REGION_DISPLAY_NAMES[option] ||
-                            option}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    // For text, number, date inputs
-                    <input
-                      type={filterConfig.type}
-                      step={
-                        filterConfig.type === "number" ? "0.0001" : undefined
-                      }
-                      value={filters[filterConfig.key]}
-                      onChange={(e) =>
-                        handleFilterChange(filterConfig.key, e.target.value)
-                      }
-                      className="w-full p-2.5 rounded-lg bg-darkPurple-50 text-darkPurple-900 border border-darkPurple-300 focus:outline-none focus:ring-2 focus:ring-darkPurple-500 transition-all duration-200"
-                      placeholder={filterConfig.tooltip.split(". ")[0]} // Use part of tooltip as placeholder
-                      title={filterConfig.tooltip}
-                    />
-                  )}
-                </div>
-              ),
-          )}
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={filters[filterConfig.key]}
+                    onChange={(e) =>
+                      handleFilterChange(filterConfig.key, e.target.value)
+                    }
+                    className="w-full p-1.5 rounded-lg bg-darkPurple-50 text-darkPurple-900 border border-darkPurple-300 focus:outline-none focus:ring-2 focus:ring-darkPurple-500 transition-all duration-200 text-sm"
+                    title={filterConfig.tooltip}
+                    placeholder={filterConfig.label}
+                    disabled={currentProviderName !== "azure" || compareMode}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-3 mt-4 sm:mt-0 justify-center sm:justify-end flex-shrink-0">
+            <button
+              onClick={() =>
+                PROVIDER_CONFIG[currentProviderName].fetchData(
+                  fetchAzureData,
+                  debouncedFilters,
+                )
+              }
+              className="p-2 bg-darkPurple-500 text-white font-scifi rounded-lg hover:bg-darkPurple-600 transition-all duration-300 shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105 animate-pulse-once"
+              title="Apply Filters"
+              disabled={currentProviderName !== "azure" || compareMode}
+            >
+              <Check className="h-5 w-5" />
+            </button>
+            <button
+              onClick={clearFilters}
+              className="p-2 bg-darkPurple-200 text-darkPurple-900 font-scifi rounded-lg hover:bg-darkPurple-300 transition-all duration-300 shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105"
+              title="Clear Filters"
+              disabled={currentProviderName !== "azure" || compareMode}
+            >
+              <RotateCw className="h-5 w-5" />
+            </button>
+            <div className="relative">
+              <button
+                onClick={() =>
+                  setShowColumnCustomization(!showColumnCustomization)
+                }
+                className="px-4 py-2 bg-darkPurple-300 text-darkPurple-900 font-scifi rounded-lg hover:bg-darkPurple-400 transition-all duration-300 shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105 text-sm"
+                title="Toggle table columns visibility"
+                disabled={compareMode}
+              >
+                <i className="fas fa-columns mr-2"></i> Columns
+              </button>
+              {showColumnCustomization && (
+                <CustomTogglePanel
+                  title="Visible Columns"
+                  items={visibleColumnsConfig}
+                  onToggle={toggleColumnVisibility}
+                  onClose={() => setShowColumnCustomization(false)}
+                />
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Main Data Table */}
-      <main className="p-6 flex-grow">
-        {loading ? (
-          <div className="flex flex-col items-center justify-center h-64 bg-darkPurple-100 rounded-lg shadow-inner border border-darkPurple-300">
-            <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-darkPurple-500 mb-4"></div>
-            <p className="text-darkPurple-900 font-secondary text-xl">
-              Retrieving Azure VM data... Please wait.
-            </p>
-          </div>
-        ) : error ? (
-          <div className="flex flex-col items-center justify-center h-64 bg-red-100/50 rounded-lg shadow-inner border border-red-500 text-red-700">
-            <i className="fas fa-exclamation-triangle text-4xl mb-4"></i>
-            <p className="font-secondary text-xl text-center">Error: {error}</p>
-            <p className="text-sm mt-2 text-red-600">
-              Please check your backend server or network connection.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto rounded-lg shadow-xl border border-darkPurple-300">
-            <table className="min-w-full table-auto bg-darkPurple-50">
-              <thead>
-                <tr className="bg-darkPurple-200 border-b border-darkPurple-300 text-darkPurple-900 uppercase text-sm">
-                  {currentVisibleColumns.map((header) => (
-                    <th
-                      key={header.key} // Use key for column headers
-                      className={`py-3 px-4 text-left font-scifi whitespace-nowrap text-shadow-glow ${
-                        header.sortable // Only sortable if 'sortable' is true in config
-                          ? "cursor-pointer hover:bg-darkPurple-300 transition-colors duration-200"
-                          : ""
-                      }`}
-                      onClick={() => header.sortable && handleSort(header.key)}
-                      title={header.tooltip}
-                    >
-                      {header.label}
-                      {sortConfig.key === header.key && header.sortable && (
-                        <span className="ml-1 text-darkPurple-500">
-                          {sortConfig.direction === "asc" ? "▲" : "▼"}
-                        </span>
-                      )}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {displayedData.length > 0 ? (
-                  displayedData.map((item) => (
-                    <tr
-                      key={
-                        item._id ||
-                        `${item.vmSize}-${item.regionName}-${item.priceType}-${item.effectiveDate}`
-                      }
-                      className={`border-b border-darkPurple-200 last:border-b-0 hover:bg-darkPurple-100 transition-colors duration-200 
-                        ${
-                          isNewRecord(item.effectiveDate)
-                            ? "bg-darkPurple-200/50 border-l-4 border-darkPurple-500"
-                            : ""
-                        }`}
-                    >
-                      {/* Dynamically render table cells based on visible columns */}
-                      {currentVisibleColumns.map((col) => (
-                        <td
-                          key={col.key}
-                          className="py-3 px-4 text-darkPurple-900"
-                        >
-                          {/* Special rendering for specific columns */}
-                          {col.key === "regionName" ? (
-                            REGION_DISPLAY_NAMES[item.regionName] ||
-                            item.regionName ||
-                            "N/A"
-                          ) : col.key === "vmSize" ? (
-                            <Link
-                              to={`/azure-vm-info/${item.regionName}/${item.vmSize}`}
-                              className="text-darkPurple-500 hover:text-darkPurple-600 hover:underline font-bold transition-colors duration-200"
-                              title={`View detailed info for ${item.vmSize}`}
-                            >
-                              {item.vmSize || "N/A"}
-                            </Link>
-                          ) : col.key === "pricePerHour" ? (
-                            item.pricePerHour ? (
-                              `$${item.pricePerHour.toFixed(5)}`
-                            ) : (
-                              "N/A"
-                            )
-                          ) : col.key === "effectiveDate" ? (
-                            <>
-                              {item.effectiveDate
-                                ? new Date(
-                                    item.effectiveDate,
-                                  ).toLocaleDateString("en-US", {
-                                    year: "numeric",
-                                    month: "short",
-                                    day: "numeric",
-                                  })
-                                : "N/A"}
-                              {isNewRecord(item.effectiveDate) && (
-                                <span className="ml-2 text-darkPurple-700 font-bold text-xs bg-darkPurple-300 px-2 py-1 rounded-full animate-pulse-fade">
-                                  NEW!
-                                </span>
-                              )}
-                            </>
-                          ) : (
-                            // Generic rendering for all other columns based on their key in the item object
-                            item[col.key] || "N/A"
-                          )}
-                        </td>
-                      ))}
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td
-                      colSpan={currentVisibleColumns.length} // Dynamic colSpan based on visible columns
-                      className="py-12 text-center text-darkPurple-700 text-xl"
-                    >
-                      <i className="fas fa-search text-4xl mb-4 text-darkPurple-500"></i>
-                      <p>No Azure VMs found matching your criteria.</p>
-                      <p className="text-base mt-2">
-                        Try adjusting your filters or clearing them.
-                      </p>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* Pagination Controls */}
-        {pagination.totalCount > 0 && (
-          <div className="mt-8 flex justify-center items-center space-x-4">
+      <main className="p-4 flex-grow overflow-x-auto">
+        {renderTable()}
+        {currentPaginationData.totalCount > 0 && (
+          <div className="mt-6 flex justify-center items-center space-x-3">
             <button
-              onClick={() => handlePageChange(pagination.page - 1)}
-              disabled={pagination.page === 1}
-              className="px-6 py-2 bg-darkPurple-500 text-white font-scifi rounded-lg hover:bg-darkPurple-600 transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105 disabled:hover:scale-100"
+              onClick={() => handlePageChange(currentPaginationData.page - 1)}
+              disabled={currentPaginationData.page === 1}
+              className="px-4 py-1.5 bg-darkPurple-500 text-white font-scifi rounded-lg hover:bg-darkPurple-600 transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105 disabled:hover:scale-100 text-sm"
               title="Go to previous page"
             >
-              <i className="fas fa-arrow-left mr-2"></i> Previous
+              <i className="fas fa-arrow-left mr-1.5"></i> Previous
             </button>
-            <span className="text-darkPurple-900 font-secondary text-lg">
+            <span className="text-darkPurple-900 font-secondary text-sm">
               Page{" "}
               <span className="font-bold text-darkPurple-500">
-                {pagination.page}
+                {currentPaginationData.page}
               </span>{" "}
               of{" "}
               <span className="font-bold text-darkPurple-500">
@@ -753,35 +747,26 @@ const Clouddata = () => {
               </span>
             </span>
             <button
-              onClick={() => handlePageChange(pagination.page + 1)}
-              disabled={pagination.page === totalPages || totalPages === 0}
-              className="px-6 py-2 bg-darkPurple-500 text-white font-scifi rounded-lg hover:bg-darkPurple-600 transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105 disabled:hover:scale-100"
+              onClick={() => handlePageChange(currentPaginationData.page + 1)}
+              disabled={
+                currentPaginationData.page === totalPages || totalPages === 0
+              }
+              className="px-4 py-1.5 bg-darkPurple-500 text-white font-scifi rounded-lg hover:bg-darkPurple-600 transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105 disabled:hover:scale-100 text-sm"
               title="Go to next page"
             >
-              Next <i className="fas fa-arrow-right ml-2"></i>
+              Next <i className="fas fa-arrow-right ml-1.5"></i>
             </button>
           </div>
         )}
       </main>
 
-      {/* Footer */}
-      <footer className="p-4 bg-darkPurple-100 border-t border-darkPurple-300 shadow-inner text-sm text-darkPurple-700 text-center flex-shrink-0">
-        <div className="container mx-auto flex flex-col sm:flex-row justify-between items-center space-y-2 sm:space-y-0">
-          <p className="animate-fade-in-slow">
-            Last Updated:{" "}
-            {new Date().toLocaleDateString("en-US", {
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-            })}{" "}
-            at{" "}
-            {new Date().toLocaleTimeString("en-US", {
-              hour: "2-digit",
-              minute: "2-digit",
-              hour12: true,
-            })}
+      <footer className="p-3 bg-darkPurple-100 border-t border-darkPurple-300 shadow-inner text-xxs text-darkPurple-700 text-center flex-shrink-0">
+        <div className="container mx-auto flex flex-col sm:flex-row justify-between items-center space-y-1 sm:space-y-0">
+          <p>
+            Last Updated: Mon, Jun 09, 2025 at 11:53 PM IST{" "}
+            {/* Updated to current date and time */}
           </p>
-          <div className="space-x-4">
+          <div className="space-x-2">
             <a
               href="#"
               className="hover:underline text-darkPurple-800 transition-colors hover:text-darkPurple-500"
@@ -803,6 +788,17 @@ const Clouddata = () => {
           </div>
         </div>
       </footer>
+
+      <ComparedModal
+        show={showModal}
+        onHide={() => {
+          setShowModal(false);
+          setCompareMode(false);
+          setSelectedVms([]);
+        }}
+        comparisonData={comparisonData}
+        selectedVms={selectedVms}
+      />
     </div>
   );
 };
