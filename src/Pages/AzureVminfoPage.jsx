@@ -62,7 +62,7 @@ const AzureVmInfoPage = () => {
               Cloud Price Nexus
             </h1>
             <p className="text-xs text-darkPurple-600 font-medium mt-1">
-              Real-time Insights from Vantage
+              Real-time Insights from Cloud as a services
             </p>
           </div>
         </div>
@@ -137,7 +137,7 @@ const AzureVmInfoPage = () => {
               href="#"
               className="hover:underline text-darkPurple-800 transition-colors hover:text-darkPurple-500"
             >
-              Docs by Vantage
+              Docs by Cloud as a services
             </a>
             <a
               href="#"

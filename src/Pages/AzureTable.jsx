@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { REGION_DISPLAY_NAMES } from "../utils/constants"; // Import REGION_DISPLAY_NAMES
 import { Link } from "react-router-dom";
+
 const AzureTable = ({
   data,
   loading,
@@ -10,7 +11,22 @@ const AzureTable = ({
   onRowSelection,
   sortConfig,
   selectedVms,
+  currentPaginationData, // Used to initialize pagination
 }) => {
+  const [localPagination, setLocalPagination] = useState({
+    page: currentPaginationData?.page || 1,
+    limit: currentPaginationData?.limit || 10,
+    totalCount: data.length, // Initial total count based on provided data
+  });
+
+  useEffect(() => {
+    // Update totalCount when data changes (e.g., after filtering)
+    setLocalPagination((prev) => ({
+      ...prev,
+      totalCount: data.length,
+    }));
+  }, [data]);
+
   const isNewRecord = (effectiveDate) => {
     if (!effectiveDate) return false;
     const thirtyDaysAgo = new Date();
@@ -28,6 +44,21 @@ const AzureTable = ({
     }
     return recordDate > thirtyDaysAgo;
   };
+
+  const handlePageChange = (newPage) => {
+    setLocalPagination((prev) => ({
+      ...prev,
+      page: newPage,
+    }));
+  };
+
+  const displayedData = data.slice(
+    (localPagination.page - 1) * localPagination.limit,
+    localPagination.page * localPagination.limit,
+  );
+  const totalPages = Math.ceil(
+    localPagination.totalCount / localPagination.limit,
+  );
 
   if (loading) {
     return (
@@ -53,7 +84,7 @@ const AzureTable = ({
   }
 
   return (
-    <div className="rounded-lg shadow-xl border border-darkPurple-300">
+    <div className="rounded-lg shadow-xl border border-darkPurple-300 overflow-x-auto relative">
       <table className="min-w-full table-auto bg-darkPurple-50">
         <thead>
           <tr className="bg-darkPurple-200 border-b border-darkPurple-300 text-darkPurple-900 uppercase text-xxs">
@@ -88,8 +119,8 @@ const AzureTable = ({
           </tr>
         </thead>
         <tbody>
-          {data.length > 0 ? (
-            data.map((item) => {
+          {displayedData.length > 0 ? (
+            displayedData.map((item) => {
               const itemKey = `${item.regionName || ""}-${item.vmSize || ""}-${
                 item.priceType || ""
               }-${item.effectiveDate || ""}`;
@@ -125,7 +156,7 @@ const AzureTable = ({
                               REGION_DISPLAY_NAMES[item.regionName] ||
                               item.regionName ||
                               "N/A"
-                            ); // Now defined
+                            );
                           case "location":
                             return item.location || "N/A";
                           case "vmSize":
@@ -235,6 +266,33 @@ const AzureTable = ({
           )}
         </tbody>
       </table>
+      {displayedData.length > 0 && (
+        <div
+          className="flex justify-between items-center p-2 bg-darkPurple-100 border-t border-darkPurple-300 sticky bottom-0 left-0 z-10"
+          style={{ position: "sticky", left: 0 }}
+        >
+          <button
+            onClick={() => handlePageChange(localPagination.page - 1)}
+            disabled={localPagination.page === 1}
+            className="px-2 py-1 bg-darkPurple-500 text-white font-scifi rounded-lg hover:bg-darkPurple-600 transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105 disabled:hover:scale-100 text-sm"
+            title="Go to previous page"
+          >
+            <i className="fas fa-arrow-left mr-1"></i> Previous
+          </button>
+          <span className="text-sm text-darkPurple-700 mx-2">
+            Showing {displayedData.length} of {localPagination.totalCount}{" "}
+            results (Page {localPagination.page} of {totalPages})
+          </span>
+          <button
+            onClick={() => handlePageChange(localPagination.page + 1)}
+            disabled={localPagination.page === totalPages}
+            className="px-2 py-1 bg-darkPurple-500 text-white font-scifi rounded-lg hover:bg-darkPurple-600 transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105 disabled:hover:scale-100 text-sm"
+            title="Go to next page"
+          >
+            Next <i className="fas fa-arrow-right ml-1"></i>
+          </button>
+        </div>
+      )}
     </div>
   );
 };

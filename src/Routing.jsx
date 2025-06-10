@@ -4,6 +4,7 @@ import Header from "./components/Header";
 import Footer from "./components/Footer";
 import CloudData from "./Pages/Home";
 import AzureVmInfoPage from "./Pages/AzureVminfoPage";
+import ComparisonVault from "./Pages/ComparisonVault";
 
 function Layout() {
   return (
@@ -26,6 +27,7 @@ const Routing = () => {
           path="/azure-vm-info/:region/:vmSize"
           element={<AzureVmInfoPage />}
         />
+        <Route path="/comparison-vault" element={<ComparisonVault />} />
       </Route>
     </Routes>
   );

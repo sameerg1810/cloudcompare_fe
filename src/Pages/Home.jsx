@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useContext, useMemo } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Tab, Tabs, TabList, TabPanel } from "react-tabs";
 import "react-tabs/style/react-tabs.css";
 import { Check, RotateCw, Download, Scale } from "lucide-react";
@@ -145,8 +145,8 @@ const ALL_FILTERS_CONFIG = [
     key: "vmSizeSearch",
     label: "Instance Type (Search)",
     type: "text",
-    default: "",
-    tooltip: "e.g., Standard_D2a_v4",
+    default: "", // Empty by default, no pre-fill
+    tooltip: "e.g., Standard_D4s_v3",
   },
   {
     key: "priceType",
@@ -168,6 +168,8 @@ const ALL_FILTERS_CONFIG = [
 
 const Clouddata = () => {
   const { data, loading, error, fetchAzureData } = useContext(AzureDataContext);
+  const navigate = useNavigate();
+  const location = useLocation(); // To get selectedTab from navigation state
   const [pagination, setPagination] = useState({
     azure: { pricing: { page: 1, limit: 10, totalCount: 0 } },
     aws: {
@@ -187,7 +189,7 @@ const Clouddata = () => {
   });
   const [filters, setFilters] = useState({
     region: "centralus",
-    vmSizeSearch: "",
+    vmSizeSearch: "", // Empty by default
     priceType: "Consumption",
   });
   const [debouncedFilters, setDebouncedFilters] = useState(filters);
@@ -209,9 +211,20 @@ const Clouddata = () => {
   const headerRef = useRef(null);
   const [headerHeight, setHeaderHeight] = useState(0);
 
+  // Define currentPaginationData once, derived from pagination state
+  const currentPaginationData = pagination[currentProviderName]?.[
+    currentServiceKey
+  ] || { page: 1, limit: 10, totalCount: 0 };
+
   useEffect(() => {
     if (headerRef.current) setHeaderHeight(headerRef.current.offsetHeight);
-  }, []);
+    // Set initial tab based on navigation state
+    const { state } = location;
+    if (state?.selectedTab) {
+      const tabIndex = ["azure", "aws", "gcp"].indexOf(state.selectedTab);
+      if (tabIndex !== -1) setSelectedMainTabIndex(tabIndex);
+    }
+  }, [location]);
 
   // Debounce filters
   useEffect(() => {
@@ -237,7 +250,11 @@ const Clouddata = () => {
   // Fetch data and dynamically update columns
   useEffect(() => {
     PROVIDER_CONFIG[currentProviderName]
-      .fetchData(fetchAzureData, debouncedFilters)
+      .fetchData(fetchAzureData, {
+        ...debouncedFilters,
+        page: currentPaginationData.page,
+        limit: currentPaginationData.limit,
+      })
       .then((items) => {
         console.log(
           `Fetched items for ${currentProviderName}/${currentServiceKey}:`,
@@ -257,14 +274,28 @@ const Clouddata = () => {
             .map((col) => ({ ...col, isVisible: true }));
           setVisibleColumnsConfig(updatedColumns);
         }
+        // Update totalCount based on backend response
         setPagination((prev) => ({
           ...prev,
           [currentProviderName]: {
             ...prev[currentProviderName],
             [currentServiceKey]: {
               ...prev[currentProviderName][currentServiceKey],
-              page: 1,
-              totalCount: items.length,
+              page: currentPaginationData.page,
+              totalCount: items.totalCount || items.length, // Adjust based on backend
+            },
+          },
+        }));
+      })
+      .catch((error) => {
+        console.error("Fetch error:", error);
+        setPagination((prev) => ({
+          ...prev,
+          [currentProviderName]: {
+            ...prev[currentProviderName],
+            [currentServiceKey]: {
+              ...prev[currentProviderName][currentServiceKey],
+              totalCount: 0, // Reset on error
             },
           },
         }));
@@ -274,6 +305,8 @@ const Clouddata = () => {
     debouncedFilters,
     currentProviderName,
     currentServiceKey,
+    currentPaginationData.page,
+    currentPaginationData.limit,
   ]);
 
   const handleFilterChange = (field, value) =>
@@ -297,7 +330,7 @@ const Clouddata = () => {
     setAIComparisonResult(null);
   };
 
-  const handlePageChange = (newPage) =>
+  const handlePageChange = (newPage) => {
     setPagination((prev) => ({
       ...prev,
       [currentProviderName]: {
@@ -308,6 +341,7 @@ const Clouddata = () => {
         },
       },
     }));
+  };
 
   const handleSort = (key) => {
     let direction = "asc";
@@ -400,16 +434,6 @@ const Clouddata = () => {
       : currentProviderName === "aws"
       ? "No AWS API available"
       : "No GCP API available";
-  const currentPaginationData = pagination[currentProviderName]?.[
-    currentServiceKey
-  ] || { page: 1, limit: 10, totalCount: 0 };
-  const displayedData = getClientFilteredAndSortedData.slice(
-    (currentPaginationData.page - 1) * currentPaginationData.limit,
-    currentPaginationData.page * currentPaginationData.limit,
-  );
-  const totalPages = Math.ceil(
-    currentPaginationData.totalCount / currentPaginationData.limit,
-  );
   const currentVisibleColumns = visibleColumnsConfig.filter(
     (col) => col.isVisible,
   );
@@ -431,6 +455,15 @@ const Clouddata = () => {
 
   const handleCompare = () => {
     setCompareMode((prev) => !prev); // Toggle compare mode
+  };
+
+  const handleGoToComparisonVault = () => {
+    if (selectedVms.length === 0) {
+      alert("Please select at least one VM to go to Comparison Vault.");
+      return;
+    }
+    localStorage.setItem("selectedVms", JSON.stringify(selectedVms));
+    navigate("/comparison-vault");
   };
 
   const handleGoCompare = async () => {
@@ -467,7 +500,7 @@ const Clouddata = () => {
       case "azure":
         return (
           <AzureTable
-            data={displayedData}
+            data={getClientFilteredAndSortedData} // Pass full filtered data
             loading={currentLoadingState}
             error={currentErrorState}
             visibleColumns={currentVisibleColumns}
@@ -475,30 +508,35 @@ const Clouddata = () => {
             onRowSelection={handleRowSelection}
             sortConfig={sortConfig}
             selectedVms={selectedVms}
+            currentPaginationData={currentPaginationData} // Initialize pagination
           />
         );
       case "aws":
         return (
           <AWSTable
-            data={[]}
+            data={getClientFilteredAndSortedData} // Pass full filtered data
             loading={currentLoadingState}
             error={currentErrorState}
-            visibleColumns={[]}
+            visibleColumns={currentVisibleColumns}
             compareMode={compareMode}
-            onRowSelection={() => {}}
+            onRowSelection={handleRowSelection}
             sortConfig={sortConfig}
+            selectedVms={selectedVms}
+            currentPaginationData={currentPaginationData} // Initialize pagination
           />
         );
       case "gcp":
         return (
           <GCPTable
-            data={[]}
+            data={getClientFilteredAndSortedData} // Pass full filtered data
             loading={currentLoadingState}
             error={currentErrorState}
-            visibleColumns={[]}
+            visibleColumns={currentVisibleColumns}
             compareMode={compareMode}
-            onRowSelection={() => {}}
+            onRowSelection={handleRowSelection}
             sortConfig={sortConfig}
+            selectedVms={selectedVms}
+            currentPaginationData={currentPaginationData} // Initialize pagination
           />
         );
       default:
@@ -589,13 +627,13 @@ const Clouddata = () => {
           >
             <Scale className="h-5 w-5 inline mr-1" /> Compare
           </button>
-          {compareMode && selectedVms.length >= 2 && (
+          {compareMode && selectedVms.length > 0 && (
             <button
-              title="Let's Compare"
-              onClick={handleGoCompare}
+              title="Go to Comparison Vault"
+              onClick={handleGoToComparisonVault}
               className="px-3 py-1.5 bg-green-500 text-white font-scifi rounded-lg hover:bg-green-600 transition-all duration-300 shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105 text-sm"
             >
-              Let's Compare
+              Go to Comparison Vault
             </button>
           )}
           <button
@@ -724,46 +762,12 @@ const Clouddata = () => {
         </div>
       </div>
 
-      <main className="p-4 flex-grow overflow-x-auto">
-        {renderTable()}
-        {currentPaginationData.totalCount > 0 && (
-          <div className="mt-6 flex justify-center items-center space-x-3">
-            <button
-              onClick={() => handlePageChange(currentPaginationData.page - 1)}
-              disabled={currentPaginationData.page === 1}
-              className="px-4 py-1.5 bg-darkPurple-500 text-white font-scifi rounded-lg hover:bg-darkPurple-600 transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105 disabled:hover:scale-100 text-sm"
-              title="Go to previous page"
-            >
-              <i className="fas fa-arrow-left mr-1.5"></i> Previous
-            </button>
-            <span className="text-darkPurple-900 font-secondary text-sm">
-              Page{" "}
-              <span className="font-bold text-darkPurple-500">
-                {currentPaginationData.page}
-              </span>{" "}
-              of{" "}
-              <span className="font-bold text-darkPurple-500">
-                {totalPages === 0 ? 1 : totalPages}
-              </span>
-            </span>
-            <button
-              onClick={() => handlePageChange(currentPaginationData.page + 1)}
-              disabled={
-                currentPaginationData.page === totalPages || totalPages === 0
-              }
-              className="px-4 py-1.5 bg-darkPurple-500 text-white font-scifi rounded-lg hover:bg-darkPurple-600 transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed shadow-glow focus:outline-none focus:ring-2 focus:ring-darkPurple-400 transform hover:scale-105 disabled:hover:scale-100 text-sm"
-              title="Go to next page"
-            >
-              Next <i className="fas fa-arrow-right ml-1.5"></i>
-            </button>
-          </div>
-        )}
-      </main>
+      <main className="p-4 flex-grow overflow-x-auto">{renderTable()}</main>
 
       <footer className="p-3 bg-darkPurple-100 border-t border-darkPurple-300 shadow-inner text-xxs text-darkPurple-700 text-center flex-shrink-0">
         <div className="container mx-auto flex flex-col sm:flex-row justify-between items-center space-y-1 sm:space-y-0">
           <p>
-            Last Updated: Mon, Jun 09, 2025 at 11:53 PM IST{" "}
+            Last Updated: Tue, Jun 10, 2025 at 08:58 PM IST{" "}
             {/* Updated to current date and time */}
           </p>
           <div className="space-x-2">
